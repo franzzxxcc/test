@@ -257,79 +257,56 @@ local function initialize()
 	local inGame = readGameItems(holder)
 	local isFirstRun = next(stored) == nil
 
-	if isFirstRun then
-		stored = {}
-		for name, info in pairs(inGame) do
+	for name, info in pairs(inGame) do
+		if not shouldSkip(name) and stored[name] == nil then
 			stored[name] = info.count
 		end
+	end
+
+	if isFirstRun then
 		local id = saveStored(stored, binID)
 		print("[StackInventory] Valores iniciales guardados.")
 		if id then
 			print("[StackInventory] Editar cantidades en: " .. NPOINT_WEB .. id)
 		end
-	else
-		local raw = readLocal(COUNTER_FILE)
-		local execCount = tonumber(raw and raw:match("%d+")) or 0
-		execCount = execCount + 1
-		writeLocal(COUNTER_FILE, tostring(execCount))
+		applyToHolder(holder, stored)
+		return
+	end
 
-		if execCount % 3 == 0 then
-			for name, count in pairs(stored) do
-				if type(count) == "number" then
-					stored[name] = count + 1
+	local raw = readLocal(COUNTER_FILE)
+	local execCount = tonumber(raw and raw:match("%d+")) or 0
+	execCount = execCount + 1
+	writeLocal(COUNTER_FILE, tostring(execCount))
+
+	if execCount % 3 == 0 then
+		local added, recreated = 0, 0
+		for name, count in pairs(stored) do
+			if not shouldSkip(name) then
+				local frame = holder:FindFirstChild(name)
+				if frame then
+					stored[name] = (tonumber(count) or 0) + 1
+					added = added + 1
+				else
+					stored[name] = 1
+					buildFrame(holder, name, 1)
+					recreated = recreated + 1
 				end
 			end
-			print("[StackInventory] Ejecucion " .. execCount .. ": +1 a todos los items.")
-		else
-			print("[StackInventory] Ejecucion " .. execCount .. ": sin cambios.")
 		end
-		local id = saveStored(stored, binID)
-		if id then
-			print("[StackInventory] Editar cantidades en: " .. NPOINT_WEB .. id)
-		end
+		print(string.format(
+			"[StackInventory] Ejecucion %d: +1 a %d presentes, %d recreados con 1.",
+			execCount, added, recreated
+		))
+	else
+		print("[StackInventory] Ejecucion " .. execCount .. ": sin cambios.")
+	end
+
+	local id = saveStored(stored, binID)
+	if id then
+		print("[StackInventory] Editar cantidades en: " .. NPOINT_WEB .. id)
 	end
 
 	applyToHolder(holder, stored)
-
-	holder.ChildRemoved:Connect(function(child)
-		if shouldSkip(child.Name) then return end
-		task.wait(0.05)
-		local cur = jsonDecode(readLocal(LOCAL_FILE) or "{}")
-		local count = tonumber(cur[child.Name])
-		if count and count > 0 and not holder:FindFirstChild(child.Name) then
-			buildFrame(holder, child.Name, count)
-		end
-	end)
-
-	holder.ChildAdded:Connect(function(child)
-		if shouldSkip(child.Name) then return end
-		task.wait(0.1)
-		local cur = jsonDecode(readLocal(LOCAL_FILE) or "{}")
-		local count = tonumber(cur[child.Name])
-		local lbl = child:FindFirstChild("ItemCount")
-		if count and lbl then
-			local current = tonumber(lbl.Text) or 0
-			if count > current then
-				lbl.Text = tostring(count)
-			end
-		end
-	end)
-
-	for _, frame in ipairs(holder:GetChildren()) do
-		if not shouldSkip(frame.Name) then
-			local lbl = frame:FindFirstChild("ItemCount")
-			if lbl then
-				lbl:GetPropertyChangedSignal("Text"):Connect(function()
-					local cur = jsonDecode(readLocal(LOCAL_FILE) or "{}")
-					local count = tonumber(cur[frame.Name])
-					local current = tonumber(lbl.Text) or 0
-					if count and count > current then
-						lbl.Text = tostring(count)
-					end
-				end)
-			end
-		end
-	end
 end
 
 initialize()
