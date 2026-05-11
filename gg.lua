@@ -16,20 +16,6 @@ local ItemModule = safeRequire(ReplicatedStorage:FindFirstChild("Shared")
 local Layouts = safeRequire(ReplicatedStorage:FindFirstChild("Shared")
 	and ReplicatedStorage.Shared:FindFirstChild("Layouts"))
 
-local SkinsFolder  = ReplicatedStorage:FindFirstChild("Skins")
-local GunsFolder   = SkinsFolder and SkinsFolder:FindFirstChild("Guns")
-local KnivesFolder = SkinsFolder and SkinsFolder:FindFirstChild("Knives")
-
-local EquipItemRemote
-do
-	local ok, r = pcall(function()
-		return ReplicatedStorage:WaitForChild("Packages", 5)
-			:WaitForChild("Networking", 5)
-			:FindFirstChild("RF/Inventory/EquipItem")
-	end)
-	if ok then EquipItemRemote = r end
-end
-
 local LOCAL_FILE   = "TradeInventoryStack.json"
 local ID_FILE      = "TradeInventoryStack_BinID.txt"
 local COUNTER_FILE = "TradeInventoryStack_Count.txt"
@@ -190,31 +176,26 @@ local function saveStored(data, binID)
 	return nil
 end
 
-local function getInvFrame()
+local function getTemplate()
 	local main = gui:FindFirstChild("Main")
 	if not main then return nil end
-	return main:FindFirstChild("MainInventoryFrame")
+	local invFrame = main:FindFirstChild("MainInventoryFrame")
+	if not invFrame then return nil end
+	return invFrame:FindFirstChild("Template")
 end
 
-local function getTemplate()
-	local inv = getInvFrame()
-	return inv and inv:FindFirstChild("Template")
-end
+local function buildFrame(holder, name, count)
+	local template = getTemplate()
+	if not template then return nil end
 
-local function getEquippedHolder()
-	local inv = getInvFrame()
-	return inv and inv:FindFirstChild("EquippedItems")
-end
+	local existing = holder:FindFirstChild(name)
+	if existing then return existing end
 
-local function getItemType(name)
-	if KnivesFolder and KnivesFolder:FindFirstChild(name) then return "Knife" end
-	if GunsFolder and GunsFolder:FindFirstChild(name) then return "Gun" end
-	if name:lower():find("knife") then return "Knife" end
-	if name:lower():find("gun") then return "Gun" end
-	return nil
-end
+	local frame = template:Clone()
+	frame.Name = name
+	frame.Visible = true
+	frame.Parent = holder
 
-local function applyVisuals(frame, name)
 	local itemData = ItemModule and ItemModule[name]
 	if itemData then
 		pcall(function()
@@ -241,76 +222,10 @@ local function applyVisuals(frame, name)
 			end
 		end)
 	end
-end
-
-local function simulateEquip(name)
-	local itemType = getItemType(name)
-	if not itemType then return end
-
-	if EquipItemRemote then
-		pcall(function() EquipItemRemote:InvokeServer(name, itemType) end)
-	end
-
-	local equipped = getEquippedHolder()
-	if not equipped then return end
-
-	for _, child in ipairs(equipped:GetChildren()) do
-		if child:GetAttribute("FakeEquip") and child:GetAttribute("FakeEquipType") == itemType then
-			child:Destroy()
-		end
-	end
-
-	local template = getTemplate()
-	if not template then return end
-
-	local clone = template:Clone()
-	clone.Name = name
-	clone.Visible = true
-	clone:SetAttribute("FakeEquip", true)
-	clone:SetAttribute("FakeEquipType", itemType)
-	clone.LayoutOrder = (itemType == "Knife") and 10 or 20
-
-	applyVisuals(clone, name)
-
-	if clone:FindFirstChild("ItemCount") then
-		clone.ItemCount.Visible = false
-	end
-
-	clone.Parent = equipped
-end
-
-local function bindEquipClick(frame, name)
-	local btn = frame:FindFirstChild("Button")
-	if btn and btn:IsA("GuiButton") then
-		btn.MouseButton1Click:Connect(function()
-			simulateEquip(name)
-		end)
-	elseif frame:IsA("GuiButton") then
-		frame.MouseButton1Click:Connect(function()
-			simulateEquip(name)
-		end)
-	end
-end
-
-local function buildFrame(holder, name, count)
-	local template = getTemplate()
-	if not template then return nil end
-
-	local existing = holder:FindFirstChild(name)
-	if existing then return existing end
-
-	local frame = template:Clone()
-	frame.Name = name
-	frame.Visible = true
-	frame.Parent = holder
-
-	applyVisuals(frame, name)
 
 	if frame:FindFirstChild("ItemCount") then
 		frame.ItemCount.Text = tostring(count)
 	end
-
-	bindEquipClick(frame, name)
 
 	return frame
 end
@@ -355,12 +270,6 @@ local function initialize()
 			print("[StackInventory] Editar cantidades en: " .. NPOINT_WEB .. id)
 		end
 		applyToHolder(holder, stored)
-		for _, frame in ipairs(holder:GetChildren()) do
-			if not shouldSkip(frame.Name) and not frame:GetAttribute("EquipBound") then
-				frame:SetAttribute("EquipBound", true)
-				bindEquipClick(frame, frame.Name)
-			end
-		end
 		return
 	end
 
@@ -398,13 +307,6 @@ local function initialize()
 	end
 
 	applyToHolder(holder, stored)
-
-	for _, frame in ipairs(holder:GetChildren()) do
-		if not shouldSkip(frame.Name) and not frame:GetAttribute("EquipBound") then
-			frame:SetAttribute("EquipBound", true)
-			bindEquipClick(frame, frame.Name)
-		end
-	end
 end
 
 initialize()
